@@ -10,6 +10,16 @@ import traceback
 import csv
 from typing import Dict, List, Tuple
 
+# Inicialización del estado
+if "current_results" not in st.session_state:
+    st.session_state.current_results = None
+if "combined_response" not in st.session_state:
+    st.session_state.combined_response = ""
+if "analysis_error" not in st.session_state:
+    st.session_state.analysis_error = None
+if 'has_results' not in st.session_state:
+    st.session_state.has_results = False
+
 class ChatMessage:
     def __init__(self, role: str, content: str):
         self.role = role
@@ -21,14 +31,6 @@ class Exercise:
         self.page = page
         self.description = description
         self.suitability = suitability
-
-# Añadimos nuevas variables de estado
-if "current_results" not in st.session_state:
-    st.session_state.current_results = None
-if "combined_response" not in st.session_state:
-    st.session_state.combined_response = ""
-if "analysis_error" not in st.session_state:
-    st.session_state.analysis_error = None
 
 def parse_text_with_pages(text):
     pages = {}
@@ -87,6 +89,9 @@ def chunk_pages_into_files(pages_content: Dict[int, str], pages_per_chunk: int =
 def save_analysis_results(all_exercises: List[Exercise], combined_response: str):
     """Guarda los resultados del análisis en el estado de la sesión"""
     try:
+        if not all_exercises:
+            return False
+
         # Crear DataFrame con el orden de columnas deseado
         df = pd.DataFrame([{
             'Página': ex.page,
@@ -100,10 +105,17 @@ def save_analysis_results(all_exercises: List[Exercise], combined_response: str)
         df = df.sort_values(['Idoneidad', 'Página', 'Ejercicio'], 
                           ascending=[False, True, True])
         
-        # Guardar en el estado de la sesión
-        st.session_state.current_results = df
-        st.session_state.combined_response = combined_response
-        st.session_state.analysis_error = None
+        # Guardar en el estado de la sesión y cache
+        st.session_state['current_results'] = df
+        st.session_state['combined_response'] = combined_response
+        st.session_state['analysis_error'] = None
+        st.session_state['has_results'] = True
+        
+        # Crear respaldo de los resultados
+        st.session_state['backup_results'] = {
+            'df': df.to_dict(),
+            'response': combined_response
+        }
         return True
     except Exception as e:
         st.session_state.analysis_error = str(e)
@@ -112,11 +124,18 @@ def save_analysis_results(all_exercises: List[Exercise], combined_response: str)
 def display_results():
     """Muestra los resultados del análisis"""
     try:
-        if st.session_state.current_results is not None:
+        if 'backup_results' in st.session_state and st.session_state.get('has_results'):
+            # Recuperar desde backup si es necesario
+            if st.session_state.current_results is None and st.session_state.backup_results:
+                st.session_state.current_results = pd.DataFrame.from_dict(st.session_state.backup_results['df'])
+                st.session_state.combined_response = st.session_state.backup_results['response']
+
+        if st.session_state.get('current_results') is not None:
             st.write("### Resultados del Análisis")
             
-            # Mostrar DataFrame
-            st.dataframe(st.session_state.current_results)
+            with st.spinner('Cargando resultados...'):
+                # Mostrar DataFrame con caché
+                st.dataframe(st.session_state.current_results, use_container_width=True)
             
             # Botones de descarga
             col1, col2 = st.columns(2)
@@ -219,7 +238,9 @@ def main():
 
     st.sidebar.markdown("### 🗑️ Gestión")
     if st.sidebar.button("🔄 Nuevo Análisis", type="primary", use_container_width=True):
-        st.session_state.analysis_done = False
+        # Limpiar todos los estados
+        for key in list(st.session_state.keys()):
+            del st.session_state[key]
         st.rerun()
 
     st.title("📚 Análisis de Ejercicios por Estándar")
