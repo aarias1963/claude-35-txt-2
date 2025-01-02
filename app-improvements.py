@@ -10,16 +10,6 @@ import traceback
 import csv
 from typing import Dict, List, Tuple
 
-# Inicialización del estado
-if "current_results" not in st.session_state:
-    st.session_state.current_results = None
-if "combined_response" not in st.session_state:
-    st.session_state.combined_response = ""
-if "analysis_error" not in st.session_state:
-    st.session_state.analysis_error = None
-if 'has_results' not in st.session_state:
-    st.session_state.has_results = False
-
 class ChatMessage:
     def __init__(self, role: str, content: str):
         self.role = role
@@ -31,6 +21,21 @@ class Exercise:
         self.page = page
         self.description = description
         self.suitability = suitability
+
+def init_session_state():
+    """Inicializa las variables de estado de la sesión"""
+    if "current_results" not in st.session_state:
+        st.session_state["current_results"] = None
+    if "combined_response" not in st.session_state:
+        st.session_state["combined_response"] = ""
+    if "analysis_error" not in st.session_state:
+        st.session_state["analysis_error"] = None
+    if "has_results" not in st.session_state:
+        st.session_state["has_results"] = False
+    if "file_chunks" not in st.session_state:
+        st.session_state["file_chunks"] = []
+    if "analysis_done" not in st.session_state:
+        st.session_state["analysis_done"] = False
 
 def parse_text_with_pages(text):
     pages = {}
@@ -118,7 +123,7 @@ def save_analysis_results(all_exercises: List[Exercise], combined_response: str)
         }
         return True
     except Exception as e:
-        st.session_state.analysis_error = str(e)
+        st.session_state['analysis_error'] = str(e)
         return False
 
 def display_results():
@@ -218,17 +223,12 @@ Documento a analizar:
     return response.content[0].text
 
 def main():
+    init_session_state()
     st.set_page_config(
         page_title="Análisis de Ejercicios",
         page_icon="📚",
         layout="wide"
     )
-
-    # Inicialización del estado
-    if "file_chunks" not in st.session_state:
-        st.session_state.file_chunks = []
-    if 'analysis_done' not in st.session_state:
-        st.session_state.analysis_done = False
 
     st.sidebar.title("⚙️ Configuración")
     api_key = st.sidebar.text_input("API Key de Anthropic", type="password")
@@ -264,7 +264,7 @@ def main():
                 content = uploaded_file.getvalue().decode('utf-8')
                 pages = parse_text_with_pages(content)
                 if pages:
-                    st.session_state.file_chunks = chunk_pages_into_files(pages)
+                    st.session_state["file_chunks"] = chunk_pages_into_files(pages)
                     st.success(f"Archivo cargado: {uploaded_file.name}")
 
             except Exception as e:
@@ -273,7 +273,7 @@ def main():
         # Input para el estándar
         if prompt := st.chat_input("Describe el estándar educativo a buscar..."):
             try:
-                if st.session_state.file_chunks:
+                if st.session_state["file_chunks"]:
                     # Iniciar análisis
                     combined_response = ""
                     all_exercises = []
@@ -281,7 +281,7 @@ def main():
                     status_text = st.empty()
                     
                     try:
-                        for i, chunk in enumerate(st.session_state.file_chunks):
+                        for i, chunk in enumerate(st.session_state["file_chunks"]):
                             chunk_start = min(chunk.keys())
                             chunk_end = max(chunk.keys())
                             chunk_info = f"páginas {chunk_start} a {chunk_end}"
@@ -299,7 +299,7 @@ def main():
                                     combined_response += f"\n\nResultados de {chunk_info}:\n{response}"
                                     all_exercises.extend(chunk_exercises)
                             
-                            progress = (i + 1) / len(st.session_state.file_chunks)
+                            progress = (i + 1) / len(st.session_state["file_chunks"])
                             progress_bar.progress(progress)
                         
                         status_text.text("Análisis completado!")
@@ -316,7 +316,7 @@ def main():
                     
                     except Exception as e:
                         st.error(f"Error durante el análisis: {str(e)}")
-                        st.session_state.analysis_error = str(e)
+                        st.session_state["analysis_error"] = str(e)
                     
                 else:
                     st.warning("Por favor, carga un archivo antes de realizar el análisis.")
