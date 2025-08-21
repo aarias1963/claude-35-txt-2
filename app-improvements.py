@@ -211,7 +211,7 @@ Documento a analizar:
     })
     
     response = client.messages.create(
-        model="claude-3-5-sonnet-20241022",
+        model="claude-sonnet-4-20250514",
         max_tokens=4096,
         messages=formatted_messages,
         system="""Eres un especialista en análisis pedagógico de materiales educativos. Tu tarea es identificar ÚNICAMENTE ejercicios que trabajen específicamente el estándar educativo solicitado.
