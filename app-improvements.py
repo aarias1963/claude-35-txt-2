@@ -178,17 +178,26 @@ def display_results():
 def query_chunk(client, chunk: Dict[int, str], prompt: str, chunk_info: str) -> str:
     formatted_messages = []
     content_message = f"""Analizando {chunk_info}.
-IMPORTANTE: Para CADA ejercicio que encuentres, usa EXACTAMENTE este formato:
-Ejercicio X (Pagina Y) [Idoneidad: Z]: Descripción completa del ejercicio
 
-Donde Z es un valor del 1 al 5 que indica el grado de idoneidad del ejercicio con el estándar solicitado:
-5 = Muy idóneo (cumple perfectamente con el estándar)
-4 = Bastante idóneo (cumple bien con el estándar)
-3 = Moderadamente idóneo (cumple parcialmente con el estándar)
-2 = Poco idóneo (cumple mínimamente con el estándar)
-1 = Muy poco idóneo (apenas cumple con el estándar)
+ESTÁNDAR ESPECÍFICO A BUSCAR: {prompt}
 
-Es OBLIGATORIO incluir la valoración de idoneidad para cada ejercicio.
+IMPORTANTE: Analiza ÚNICAMENTE ejercicios que trabajen DIRECTAMENTE el estándar especificado.
+
+Para CADA ejercicio que SÍ trabaje específicamente el estándar, usa EXACTAMENTE este formato:
+Ejercicio X (Página Y) [Idoneidad: Z]: Descripción completa del ejercicio
+
+Donde Z es la valoración de idoneidad específica para el estándar:
+5 = Trabaja directa y completamente el estándar especificado
+4 = Trabaja el estándar de manera clara y efectiva
+3 = Trabaja el estándar pero de forma parcial o indirecta
+2 = Apenas toca el estándar especificado
+1 = Relacionado muy vagamente con el estándar
+
+EXCLUSIONES - NO incluyas ejercicios que:
+- Solo mencionen tangencialmente temas relacionados
+- Trabajen conceptos generales pero no el estándar específico
+- Sean ejercicios de gramática, vocabulario general, o comprensión si no trabajan específicamente el estándar
+- Practiquen otras habilidades aunque sean del mismo tema general
 
 Documento a analizar:
 """.encode('utf-8').decode('utf-8')
@@ -200,24 +209,33 @@ Documento a analizar:
         "role": "user",
         "content": content_message
     })
-    formatted_messages.append({
-        "role": "user", 
-        "content": prompt.encode('utf-8').decode('utf-8')
-    })
     
     response = client.messages.create(
         model="claude-3-5-sonnet-20241022",
         max_tokens=4096,
         messages=formatted_messages,
-        system="""Eres un asistente especializado en análisis de ejercicios educativos. REGLAS:
+        system="""Eres un especialista en análisis pedagógico de materiales educativos. Tu tarea es identificar ÚNICAMENTE ejercicios que trabajen específicamente el estándar educativo solicitado.
 
-1. Para CADA ejercicio encontrado, DEBES usar EXACTAMENTE este formato:
+INSTRUCCIONES CRÍTICAS:
+1. SOLO analiza ejercicios que trabajen DIRECTAMENTE el estándar especificado
+2. SÉ MUY SELECTIVO - es mejor no incluir un ejercicio que incluir uno irrelevante
+3. Para cada ejercicio relevante, usa EXACTAMENTE este formato:
    Ejercicio X (Página Y) [Idoneidad: Z]: Descripción
-   donde Z DEBE ser un número del 1 al 5
-2. Es OBLIGATORIO incluir la valoración de idoneidad [Idoneidad: Z]
-3. La valoración DEBE ser un número entero entre 1 y 5
-4. NO omitas la valoración en ningún ejercicio
-5. Analiza SOLO ejercicios que cumplan con el estándar solicitado""".encode('utf-8').decode('utf-8')
+4. La valoración (Z) debe reflejar qué tan específicamente trabaja el estándar (1-5)
+5. NO incluyas ejercicios que solo sean temáticamente relacionados
+6. NO incluyas ejercicios de práctica general de vocabulario o gramática a menos que trabajen específicamente el estándar
+
+PROCESO DE ANÁLISIS:
+1. Lee el estándar específico solicitado
+2. Examina cada ejercicio preguntándote: "¿Este ejercicio trabaja DIRECTAMENTE este estándar específico?"
+3. Solo si la respuesta es SÍ, inclúyelo en el análisis
+4. Evalúa la idoneidad basándote en qué tan específicamente aborda el estándar
+
+EJEMPLOS:
+- Si el estándar es "adjetivos de personalidad", SOLO incluye ejercicios que practiquen específicamente adjetivos como simpático, tímido, extrovertido, etc.
+- NO incluyas ejercicios generales de descripción física, vocabulario de familia, o gramática de adjetivos a menos que trabajen específicamente personalidad
+
+Recuerda: Es mejor ser conservador y específico que genérico e inclusivo.""".encode('utf-8').decode('utf-8')
     )
     
     return response.content[0].text
@@ -246,9 +264,16 @@ def main():
     st.title("📚 Análisis de Ejercicios por Estándar")
     st.markdown("""
     Esta aplicación analiza ejercicios educativos y los clasifica según estándares específicos.
-    1. Sube un archivo TXT o PDF
-    2. Describe el estándar educativo que quieres buscar
-    3. Obtén un análisis detallado y exportable
+    
+    **Instrucciones:**
+    1. Sube un archivo TXT o PDF con el manual educativo
+    2. Describe de forma MUY ESPECÍFICA el estándar educativo que quieres buscar
+    3. Obtén un análisis detallado y exportable de ejercicios que trabajen ese estándar específico
+    
+    **Consejos para mejores resultados:**
+    - Sé específico: en lugar de "vocabulario", usa "adjetivos de personalidad: simpático, tímido, extrovertido"
+    - Incluye ejemplos del vocabulario o conceptos específicos que buscas
+    - Especifica el tipo de habilidad: "práctica oral de", "ejercicios escritos de", etc.
     """)
 
     if not api_key:
@@ -265,15 +290,21 @@ def main():
                 pages = parse_text_with_pages(content)
                 if pages:
                     st.session_state["file_chunks"] = chunk_pages_into_files(pages)
-                    st.success(f"Archivo cargado: {uploaded_file.name}")
+                    st.success(f"Archivo cargado: {uploaded_file.name} ({len(pages)} páginas)")
 
             except Exception as e:
                 st.error(f"Error al procesar el archivo: {str(e)}")
 
-        # Input para el estándar
-        if prompt := st.chat_input("Describe el estándar educativo a buscar..."):
+        # Input para el estándar con ejemplo
+        st.markdown("### 🎯 Especifica el Estándar a Buscar")
+        st.markdown("**Ejemplo:** *Adjetivos de personalidad: simpático/a, tímido/a, extrovertido/a, trabajador/a, inteligente, perezoso/a*")
+        
+        if prompt := st.chat_input("Describe de forma ESPECÍFICA el estándar educativo..."):
             try:
                 if st.session_state["file_chunks"]:
+                    # Mostrar el estándar analizado
+                    st.info(f"**Analizando estándar:** {prompt}")
+                    
                     # Iniciar análisis
                     combined_response = ""
                     all_exercises = []
@@ -307,12 +338,14 @@ def main():
                         # Guardar resultados en el estado
                         if all_exercises:
                             if save_analysis_results(all_exercises, combined_response):
+                                st.success(f"✅ Se encontraron {len(all_exercises)} ejercicios que trabajan específicamente el estándar solicitado")
                                 # Mostrar resultados
                                 display_results()
                             else:
                                 st.error("Error al guardar los resultados del análisis")
                         else:
-                            st.write("No se encontraron ejercicios que cumplan con el estándar especificado.")
+                            st.warning("❌ No se encontraron ejercicios que trabajen específicamente el estándar solicitado.")
+                            st.info("💡 **Sugerencias:**\n- Verifica que el estándar esté presente en el manual\n- Intenta ser más específico o más general en la descripción\n- Revisa si usaste la terminología correcta")
                     
                     except Exception as e:
                         st.error(f"Error durante el análisis: {str(e)}")
